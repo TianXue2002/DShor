@@ -75,9 +75,14 @@ class Qcontrol():
                  values: List[Cvalue], 
                  amps: List[np.complexfloating], 
                  length: int):
+        if len(amps) != 2**length:
+            raise ValueError("Didn't specify all amps for controlled qubits")
         self.values = values
         self.amps = amps
         self.length = length
+
+    def __len__(self):
+        return self.length
     
     def qalloc(num, basis):
         if basis == "X":
@@ -100,13 +105,39 @@ class Qregister():
                  amps: List[np.complex128],
                  module: int,
                  length: int):
+        if len(amps) != 2**length:
+            raise ValueError("Didn't specify all amps for Qregister")
+        if abs(np.linalg.norm(amps) - 1) > 1e-7:
+            raise ValueError("Unnormalized Qregister")
+        else:
+            amps = amps / np.linalg.norm(amps)
+        
+
         self.values = values
         self.amps = amps
         self.module = module
         self.length = length
+        
 
     def __str__(self):
-        return "\n".join(f"{amp} → {val[0].binary}|{val[1].binary}" for amp, val in zip(self.amps, self.values))
+        output = ""
+        for value in self.values:
+            qc_value = value[0]
+            qt_value = value[1]
+            cur_amp = self.amps[qc_value.value * 2**(len(qt_value)) + qt_value.value]
+            output += f"{cur_amp} → {qc_value.binary}|{qt_value.binary}\n"
+        return output
+    
+    def __len__(self):
+        return self.length
+    
+    def __matmul__(self,
+                   other):
+        if len(self) != len(other):
+            raise ValueError("Cannot multiply two qubits with different length")
+        amp1 = self.amps
+        amp2 = other.amps
+        return np.vdot(amp1, amp2)
 
     def find_measurement_outcome(self, 
                                  pos_lst: List[int], 
@@ -114,6 +145,8 @@ class Qregister():
         data_qubit = self.values[0][1]
         control_qubit = self.values[0][0]
         prob_lst = np.zeros([2**len(pos_lst), 2**(data_qubit.length + control_qubit.length - len(pos_lst))], dtype=np.complex128)
+        qc_length = len(self.values[0][0])
+        qt_length = len(self.values[0][1])
         if basis == "X":
             for k in range(2**len(pos_lst)):
                 cur_observables = Cvalue(k, len(pos_lst))
@@ -130,7 +163,11 @@ class Qregister():
                         column_index = cur_data.value
                     else:
                         raise ValueError("Measure more controls than expected")
-                    prob_lst[k][column_index] += neg * self.amps[j] / np.sqrt(2**len(pos_lst))
+                    amp_index = cvalue.value*2**qt_length + cur_data.value
+                    # print("====")
+                    # print(cvalue.value, cur_data.value)
+                    # print(self.amps[amp_index], amp_index)
+                    prob_lst[k][column_index] += neg * self.amps[amp_index] / np.sqrt(2**len(pos_lst))
                     # print(prob_lst)
         elif basis == "Z":
             for k in range(2**len(pos_lst)):
@@ -147,12 +184,13 @@ class Qregister():
                         column_index = cur_data.value
                     if cur_cvalue == cur_observables:
                         # print(left_cvalue.value, k, column_index)
-                        prob_lst[k][column_index] += self.amps[j]
+                        amp_index = cvalue.value*2**qt_length + cur_data.value
+                        prob_lst[k][column_index] += self.amps[amp_index]
         else:
             raise ValueError("invalid measurement basis")
         prob_lst = np.abs(prob_lst)**2
         prob_lst = np.sum(prob_lst, axis=1)
-        print(prob_lst)
+        # print(prob_lst)
         if abs(sum(prob_lst) - 1) > 1e-7:
             raise ValueError("Unnormalized probability vector")
         p = np.random.rand()
@@ -172,9 +210,8 @@ class Qregister():
                          basis: str) -> Tuple[Qint, List[int]]:
         observables = self.find_measurement_outcome(pos_lst, basis)
         result_values = []
-        result_amps = []
+        result_amps = np.zeros(2**(len(self) - len(pos_lst)), dtype=np.complex128)
         if_all_measured = (len(pos_lst) == len(self.values[0][0]))
-        print(if_all_measured)
         if len(pos_lst) > len(set(pos_lst)):
             raise ValueError("Meaningless to measure a qubit for twice")
         if basis == "X":
@@ -183,19 +220,23 @@ class Qregister():
                 cvalue = value[0]
                 data = value[1]
                 measured_cvalue = cvalue[pos_lst]
-                new_amp = self.amps[i] * if_neg(measured_cvalue, observables)
+                amp_index = cvalue.value * 2**len(data) + data.value
+                new_amp = self.amps[amp_index] * if_neg(measured_cvalue, observables)
                 if not if_all_measured:
                     new_cvalue = cvalue.pop(pos_lst)
                     result_values.append([new_cvalue, data])
+                    result_amps[new_cvalue.value * 2**len(data) + data.value] += new_amp
                 else:
                     result_values.append(data)
-                result_amps.append(new_amp)
+                    result_amps[data.value] += new_amp
+                
         elif basis == "Z":
             for i in range(len(self.values)):
                 value = self.values[i]
                 cvalue = value[0]
                 data = value[1]
                 measured_cvalue = cvalue[pos_lst]
+                amp_index = cvalue.value * 2**len(data) + data.value
                 if measured_cvalue == observables:
                     if not if_all_measured:
                         # print(measured_cvalue, "m")
@@ -204,13 +245,13 @@ class Qregister():
                         # print(data, "data")
                         new_cvalue = cvalue.pop(pos_lst)
                         result_values.append([new_cvalue, data])
+                        result_amps[new_cvalue.value * 2**len(data) + data.value] += self.amps[amp_index]
                     else:
                         result_values.append(data)
-                    result_amps.append(self.amps[i])
+                        result_amps[data.value] += self.amps[amp_index]
         else:
             raise ValueError("Invalid measurement basis")
         
-        result_amps = np.array(result_amps)
         result_amps = result_amps/(np.linalg.norm(result_amps))
         if if_all_measured:
             result_qubit = Qint(result_values, result_amps, self.module, self.length-len(pos_lst)) 
@@ -247,10 +288,16 @@ def controlled_by(qc: Union[int, Qcontrol],
             raise ValueError("Cannot load more than 1 integer with classical control")
 
     elif isinstance(qc, Qcontrol):
-        if isinstance(offset, List):
-            result_values = [[c, (f(t, offset[c.value]))] 
-                    for c in qc.values for t in qt.values]
-            result_amps = [c_amp * t_amp for c_amp in qc.amps for t_amp in qt.amps]
+        if len(offset) > 1:
+            # result_values = [[c, (f(t, offset[c.value]))] 
+            #         for c in qc.values for t in qt.values]
+            result_values = []
+            result_amps = np.zeros(2**(len(qt)+len(qc)), dtype=np.complex128)
+            for c in qc.values:
+                for t in qt.values:
+                    result_t_value = f(t, offset[c.value])
+                    result_values.append([c, result_t_value])
+                    result_amps[2**len(qt)*c.value + result_t_value.value] = qc.amps[c.value] * qt.amps[t.value]
             result_length = qc.length+qt.length
             result_module = qt.module
             return Qregister(result_values, result_amps, result_module, result_length)

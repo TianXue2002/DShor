@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Union
-
+from copy import copy
 class BinaryInt:
     def __init__(self, value: int, length:int):
         self.length = length
@@ -31,11 +31,23 @@ class BinaryInt:
         return self.binary
     
     def __add__(self, other):
-        if isinstance(other, int):
-            result_value = (self.value + other)
+        if isinstance(other, int) or isinstance(other, np.int64):
+            result_value = (self.value + other) % (2**self.length)
             result_length = self.length
         elif isinstance(other, BinaryInt):
-            result_value = (self.value + other.value)
+            result_value = (self.value + other.value) % (2**self.length)
+            result_length = max([self.length, other.length])
+
+        elif not isinstance(other, BinaryInt):
+            raise ValueError("Cannot add a non BinaryInt to a BinaryInt")
+        return BinaryInt(result_value, result_length)
+    
+    def __sub__(self, other):
+        if isinstance(other, int):
+            result_value = (self.value - other) % (2**self.length)
+            result_length = self.length
+        elif isinstance(other, BinaryInt):
+            result_value = (self.value + other.value) % (2**self.length)
             result_length = max([self.length, other.length])
 
         elif not isinstance(other, BinaryInt):
@@ -55,6 +67,42 @@ class BinaryInt:
     def __mod__(self, module):
         value = self.value % module
         return BinaryInt(value, self.length)
+
+    def __len__(self):
+        return self.length
+    
+    def __eq__(self,
+               other):
+        if isinstance(other, int):
+            return self.value == other
+        elif isinstance(other, BinaryInt):
+            return self.value == other.value
+        else:
+            raise ValueError("Invalid data type to compred with BinaryInt")
+
+    def copy(self):
+        return BinaryInt(self.value, self.length)
+    
+    def insert(self,
+               bit:Union[int, str],
+               pos = 0):
+        
+        if isinstance(bit, int):
+            new_length = self.length + 1
+            if bit > 1:
+                raise ValueError("use string bit to insert more than 1 bit")
+        elif isinstance(bit, str):
+            new_length = self.length + len(bit)
+        else:
+            raise ValueError("Invalid bit type")
+        new_bin_str = self.binary[:len(self)-pos] + str(bit) + self.binary[len(self)-pos:len(self)]
+        new_value = int(new_bin_str, 2)
+        
+        self.length = new_length
+        self.binary = new_bin_str
+        self.value = new_value
+        return
+
 
 def modular_add(a: BinaryInt, 
                 b: Union[BinaryInt, int], 
