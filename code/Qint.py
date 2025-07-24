@@ -10,12 +10,15 @@ class Qint():
         qint_lst = []
         for value in values:
             if isinstance(value, int):
-                bint = BinaryInt(value % module, module, length)
+                if value >= 2**length:
+                    raise ValueError("loading a value greater than the register can hold")
+                bint = BinaryInt(value, length)
                 qint_lst.append(bint)
-            elif isinstance(value, BinaryInt):
-                if value.module != module:
-                    raise ValueError("data and qubit have different modules")
-                bint = value
+
+            if isinstance(value, BinaryInt):
+                if value.length >= 2**length:
+                    raise ValueError("loading a value greater than the register can hold")
+                qint_lst.append(value)
         self.values = qint_lst
         self.amps = amps
         self.length = length
@@ -27,12 +30,14 @@ class Qint():
         return "\n".join(f"{amp} → {val.binary}" for amp, val in zip(self.amps, self.values))
     
     def __lshift__(self, offset):
-        
+        result_values = [value << offset for value in self.values]
+        result_length = self.length + offset
+        return Qint(result_values, self.amps, self.module, result_length)
 
     def update(self, values):
         qint_lst = []
         for value in values:
-            bint = BinaryInt(value, self.module, self.length)
+            bint = BinaryInt(value, self.length)
             qint_lst.append(bint)
         self.values = qint_lst
 
@@ -47,4 +52,4 @@ def qalloc(num:int, basis:str):
         amps = [1]
         module = 2**num
         length = num
-    return Qint(amps, values, module, length)
+    return Qint(values, amps, module, length)
