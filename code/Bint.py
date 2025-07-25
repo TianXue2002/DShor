@@ -9,9 +9,6 @@ class BinaryInt:
             raise ValueError("Must be binary digits")
         self.value = value
         self.binary = bin_str
-
-    def __getitem__(self, pos):
-        return self.binary[(-1-pos)]
     
     def __getitem__(self, pos):
         if isinstance(pos, int):
@@ -20,11 +17,15 @@ class BinaryInt:
             return BinaryInt(new_value, 1)
         elif isinstance(pos, slice):
             start = pos.start or 0
-            stop = pos.stop
+            stop = pos.stop or self.length
             step = pos.step or 1
-            new_binary = ''.join(self.binary[-1 - i] for i in range(start-1, stop-1, step))
+            new_binary = ''.join(self.binary[-1 - i] for i in range(stop-1, start-1, -step))
             new_value  = int(new_binary, 2)
             return BinaryInt(new_value, stop - start)
+        elif isinstance(pos, list) or isinstance(pos, np.ndarray):
+            new_binary = ''.join(self.binary[-1-i] for i in reversed(pos))
+            new_value  = int(new_binary, 2)
+            return BinaryInt(new_value, len(pos))
         else:
             raise ValueError("Invalide index")
     def __str__(self):
