@@ -1,5 +1,6 @@
 from QuantumGate import *
 from typing import Dict
+from collections import defaultdict
 
 class AbstractRegister():
     def __init__(self,
@@ -24,6 +25,14 @@ class AbstractRegister():
         cur_depth = self.depth
         gate = QuantumGate(type, self.pos)
         self.append(cur_depth, gate)
+
+    def count_gate(self):
+        count = defaultdict(int)
+        for gate in self.gates:
+            gate_type = gate.type
+            if isinstance(gate, TwoQubitGate):
+                control = TwoQubitGate.control
+
 
     def X(self):
         self.add_single_qubit_gate("X")
@@ -67,8 +76,8 @@ class AbstractRegister():
         target_depth = other.depth
         CNOT_depth = max([control_depth, target_depth])
         control_type = self.get_type()
-        control = (self.pos, control_type)
-        target = (other.pos, other.get_type())
+        control = self
+        target = other
         cur_gate = TwoQubitGate(type, self.pos, control, target)
         self.append(CNOT_depth, cur_gate)
         other.append(CNOT_depth, cur_gate)

@@ -16,8 +16,8 @@ class TwoQubitGate(QuantumGate):
     def __init__(self, 
                  type: str, 
                  position: int,
-                 control: Tuple[int, str], 
-                 target: Tuple[int, str]):
+                 control, 
+                 target):
         super().__init__(type, position)
         type_lst = ["CNOT", "CZ"]
         if type not in type_lst:

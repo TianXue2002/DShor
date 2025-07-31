@@ -38,7 +38,7 @@ def teleported_Toffoli(self,
     if p < 0.5:
         g1 = CCGate(QuantumGate("Z", a0.pos), d0, [a0], "X")
         d0.appendCCgates(g1)
-        g2 = TwoQubitGate("CZ", a1.pos, (a1.pos, "ancilla"), (a2.pos, "ancilla"))
+        g2 = TwoQubitGate("CZ", a1.pos, a1, a2)
         g2 = CCGate(g2, d0, [a1, a2], "X", repeat=True)
         d0.appendCCgates(g2)
     else:
@@ -50,7 +50,7 @@ def teleported_Toffoli(self,
     if p < 0.5:
         g1 = CCGate(QuantumGate("X", a1.pos), d1, [a1], "Z")
         d1.appendCCgates(g1)
-        g2 = TwoQubitGate("CNOT", a2.pos, (a2.pos, "ancilla"), (a0.pos, "ancilla"))
+        g2 = TwoQubitGate("CNOT", a2.pos, a2, a0)
         g2 = CCGate(g2, d1, [a2, a0], "Z", repeat=True)
         d1.appendCCgates(g2)
     else:
@@ -61,7 +61,7 @@ def teleported_Toffoli(self,
     if p < 0.5:
         g1 = CCGate(QuantumGate("X", a2.pos), d2, [a2], "Z")
         d2.appendCCgates(g1)
-        g2 = TwoQubitGate("CNOT", a1.pos, (a1.pos, "ancilla"), (a0.pos, "ancilla"))
+        g2 = TwoQubitGate("CNOT", a1.pos, a1, a0)
         g2 = CCGate(g2, d2, [a1, a0], "Z", repeat=True)
         d2.appendCCgates(g2)
     else:
@@ -123,7 +123,7 @@ def unAND(self,
         if truth_table[1]:
             qj.X()
 
-        g = TwoQubitGate("CZ", qi.pos, (qi.pos, qi.get_type()), (qj.pos, qj.get_type()))
+        g = TwoQubitGate("CZ", qi.pos, qi, qj)
         g = CCGate(g, a, [qi, qj], "X")
         a.appendCCgates(g)
 

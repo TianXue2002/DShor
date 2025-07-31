@@ -54,9 +54,14 @@ class AbstractCircuit():
         gate_color = "black"
         if cc:
             gate_color = "blue"
+
+        control = gate.control
+        target = gate.target
+
         y = 2*reg.pos + (reg.get_type() == "ancilla")
-        control_pos = gate.control[0]
-        if gate.control[1] == "data":
+        control_pos = control.pos
+        control_type = control.get_type()
+        if control_type == "data":
             y_ref = 2*control_pos
         else:
             y_ref = 2*control_pos + 1
@@ -64,19 +69,19 @@ class AbstractCircuit():
             return
         # Two-qubit gate
         pos = reg.pos
-        control = gate.control
-        target = gate.target
-        control_type = control[1]
-        target_type = target[1]
-        if control_type == "data":
-            y_control = 2*control[0]
-        else:
-            y_control = 2*control[0] + 1
         
-        if target_type == "data":
-            y_target = 2*target[0]
-        else:
-            y_target = 2*target[0] + 1
+        # control_type = control[1]
+        # target_type = target[1]
+        # if control_type == "data":
+        #     y_control = 2*control[0]
+        # else:
+        #     y_control = 2*control[0] + 1
+
+        
+        y_control = 2*control.pos + (control.get_type() == "ancilla")
+        target_type = target.get_type()
+        
+        y_target = 2*target.pos + (target_type == "ancilla")
 
         ax.plot([x, x], [y_control, y_target], 'k-', linewidth=1, color = gate_color)
         ax.plot(x, y_control, 'ko', markersize=6, color = gate_color)
@@ -152,8 +157,8 @@ class AbstractCircuit():
         if isinstance(cur_gate, TwoQubitGate):
             control = cur_gate.control
             target = cur_gate.target
-            y1 = 2*control[0] + (control[1] == "ancilla")
-            y2 = 2*target[0] + (target[1] == "ancilla")
+            y1 = 2*control.pos + (control.get_type() == "ancilla")
+            y2 = 2*target.pos + (target.get_type() == "ancilla")
             y_target = min([y1, y2])
             if not gate.repeat:
                 ax.plot([x - offset, x - offset], [y+0.2, y_target], linestyle='-', color='black', linewidth=1)
