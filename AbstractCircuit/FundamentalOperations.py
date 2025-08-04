@@ -7,6 +7,11 @@ from help_function import *
 
 from AbstractRegister import DataRegister, AncillaRegister, AbstractRegister
 
+"""
+Check the compilation circuit picture to understand these gates. The measurement based gates only has
+50% possiblity to be applied as they are controlled by the +1 classical signal.
+"""
+
 def teleported_Toffoli(self,
         i: int, 
         j: int,
@@ -114,7 +119,7 @@ def unAND(self,
         raise ValueError("unAnd must be based on an ancilla qubit")
 
     
-    threshold = 1
+    threshold = 0.5
 
     p = random()
     if p < threshold:
@@ -269,6 +274,10 @@ def add(self,
             previous_overflow.CNOT(cur_overflow)
         a = self.ancilla[q2.pos]
         self.unAND(q1,q2,a)
+        if i != 0:
+            ap = self.ancilla[q2p.pos]
+            ap.CNOT(q1)
+
 
     for i in range(add_len):
         q1 = q1_lst[i]

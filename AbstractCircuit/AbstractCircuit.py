@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from random import random
 from help_function import *
 from FundamentalOperations import *
+from collections import defaultdict
 
 from AbstractRegister import DataRegister, AncillaRegister, AbstractRegister
 
@@ -13,10 +14,16 @@ class AbstractCircuit():
                  length: int,
                  data_registers: Dict[int, DataRegister],
                  ancilla_registers: Dict[int, AncillaRegister]):
-
+        """
+        Inputs:
+            length:             the number of the qubits in the circuit
+            data_registers:     a diction data[qubit position] = DatRegister
+            ancilla_registers:  a dictioon ancilla[qubit posiiton] = AncillaRegister
+        """
         self.length = length
         self.data = data_registers
         self.ancilla = ancilla_registers
+        # check number of qubits in the circuit
         if length != len(data_registers.keys()) + len(ancilla_registers.keys()):
             raise ValueError("Inconsistent length")
 
@@ -27,6 +34,7 @@ class AbstractCircuit():
     
     def __getitem__(self,
                     index):
+                    
         if isinstance(index, int):
             return self.data[index]
         elif isinstance(index, list):
@@ -45,12 +53,117 @@ class AbstractCircuit():
         else:
             raise ValueError("Unsupport key for slice")
     
+    def add_ancilla(self, pos = None):
+        """
+        By default, each ancilla is uniquely belonged to one data register. The ancilla qubits
+        is atomatically marked as "busy". They will only be marked as "idle" when they are 
+        measured (reset). This is only true for the modular exponentiation protocol. 
+        It doesn't support more than one ancilla for one data qubit now.
+
+        Inputs:
+            pos: position of the ancilla qubit. If the argument is not given, append the ancilla qubits
+            to the end of the circuit
+        """
+        if pos == None:
+            if len(self.ancilla.keys()) == 0:
+                cur_pos = 0
+            else:
+                found = False
+                for pos, ancilla in self.ancilla.items():
+                    if ancilla.check_availablity():
+                        cur_pos = pos
+                        found = True
+                        break
+                if not found:
+                    cur_pos = max([pos for pos in self.ancilla.keys()]) + 1
+        else:
+            if pos in self.ancilla.keys():
+                if self.ancilla[pos].status == "busy":
+                    raise ValueError("The current ancilla is busy")
+                else:
+                    cur_ancilla = self.ancilla[pos]
+                    return cur_ancilla
+            else:
+                cur_pos = pos
+        cur_ancilla = AncillaRegister(cur_pos, {}, "busy")
+        self.ancilla[cur_pos] = cur_ancilla
+        self.length += 1
+        return cur_ancilla
+    
+    def add_data(self):
+        """
+        Append a data qubits at the end of the circuit.
+        """
+        if len(self.data.keys()) == 0:
+            cur_pos = 0
+        else:
+            cur_pos = max(self.data.keys()) + 1
+        cur_data = DataRegister(cur_pos, {})
+        self.data[cur_pos] = cur_data
+        self.length += 1
+        return cur_data
+    
+    def allocate_ancillas(self,
+                          num: int,
+                          pos_lst = []):
+        """
+        Allocate more than one busy ancilla qubits.
+        Inputs:
+            num:        number of ancilla qubits
+            pos_lst:    a lis of the postions of allocated ancilla qubits. If not position is give,
+            it will allocate idle ancilla and add new ancilla qubits if needed.
+        
+        Returns:
+            the idle ancilla qubits it allocates
+        """
+        idle_register_lst = []
+        # Allocate idle ancillas
+        if pos_lst == []:
+            for pos, register in self.ancilla.items():
+                if register.check_availablity() and len(idle_register_lst) < num:
+                    idle_register_lst.append(register)
+            num_added_ancilla = num - len(idle_register_lst)
+            for i in range(num_added_ancilla):
+                added_ancilla = self.add_ancilla()
+                idle_register_lst.append(added_ancilla)
+        else:
+            for i in range(num):
+                added_ancilla = self.add_ancilla(pos = pos_lst[i])
+                idle_register_lst.append(added_ancilla)
+
+        for ancilla in idle_register_lst:
+            ancilla.status = "busy"
+        return idle_register_lst
+    
+    def count_gate(self):
+        """
+        Count the number of gates
+
+        Returns:
+            count:      a diction of count[gate_type] = number of gates
+        """
+        count = defaultdict(int)
+        for key in self.data.keys():
+            register = self.data[key]
+            cur_count = register.count_gate(double_count = False)
+            for key, value in cur_count.items():
+                count[key] += value
+    
+        for key in self.ancilla.keys():
+            register = self.ancilla[key]
+            cur_count = register.count_gate(double_count = False)
+            for key, value in cur_count.items():
+                count[key] += value
+        return count
+
+    # Drawing function. They can be ignored
     def drawTwoQubitGate(self,
                          reg: AbstractRegister,
                          gate: QuantumGate,
                          x: int,
                          ax,
                          cc = False):
+
         gate_color = "black"
         if cc:
             gate_color = "blue"
@@ -99,12 +212,16 @@ class AbstractCircuit():
                     x: int,
                     ax):
         y = 2*reg.pos + (reg.get_type() == "ancilla")
-        y_ref = 2*gate.c1[0] + (gate.c1[1] == "ancilla")
+        qc1 = gate.c1
+        qc2 = gate.c2
+        qtarget = gate.target
+
+        y_ref = 2*qc1.pos + (qc1.get_type() == "ancilla")
         if y != y_ref:
             return
-        c1 = 2*gate.c1[0] + (gate.c1[1] == "ancilla")
-        c2 = 2*gate.c2[0] + (gate.c2[1] == "ancilla")
-        target = 2*gate.target[0] + (gate.target[1] == "ancilla")
+        c1 = 2*qc1.pos + (qc1.get_type() == "ancilla")
+        c2 = 2*qc2.pos + (qc2.get_type() == "ancilla")
+        target = 2*qtarget.pos + (qtarget.get_type() == "ancilla")
         ax.plot([x, x], [max([c1,c2]), target], 'k-', linewidth=1)
         ax.plot(x, c1, 'ko', markersize=6)
         ax.plot(x, c2, 'ko', markersize=6)
@@ -212,67 +329,7 @@ class AbstractCircuit():
         ax.axis('off')
         plt.tight_layout()
         plt.show()
-
-
-    def add_ancilla(self, pos = None):
-        if pos == None:
-            if len(self.ancilla.keys()) == 0:
-                cur_pos = 0
-            else:
-                found = False
-                for pos, ancilla in self.ancilla.items():
-                    if ancilla.check_availablity():
-                        cur_pos = pos
-                        found = True
-                        break
-                if not found:
-                    cur_pos = max([pos for pos in self.ancilla.keys()]) + 1
-        else:
-            if pos in self.ancilla.keys():
-                if self.ancilla[pos].status == "busy":
-                    raise ValueError("The current ancilla is busy")
-                else:
-                    cur_ancilla = self.ancilla[pos]
-                    return cur_ancilla
-            else:
-                cur_pos = pos
-        cur_ancilla = AncillaRegister(cur_pos, {}, "busy")
-        self.ancilla[cur_pos] = cur_ancilla
-        self.length += 1
-        return cur_ancilla
-    
-    def add_data(self):
-        if len(self.data.keys()) == 0:
-            cur_pos = 0
-        else:
-            cur_pos = max(self.data.keys()) + 1
-        cur_data = DataRegister(cur_pos, {})
-        self.data[cur_pos] = cur_data
-        self.length += 1
-        return cur_data
-    
-    def allocate_ancillas(self,
-                          num: int,
-                          pos_lst = []):
-        
-        idle_register_lst = []
-        # Allocate idle ancillas
-        if pos_lst == []:
-            for pos, register in self.ancilla.items():
-                if register.check_availablity() and len(idle_register_lst) < num:
-                    idle_register_lst.append(register)
-            num_added_ancilla = num - len(idle_register_lst)
-            for i in range(num_added_ancilla):
-                added_ancilla = self.add_ancilla()
-                idle_register_lst.append(added_ancilla)
-        else:
-            for i in range(num):
-                added_ancilla = self.add_ancilla(pos = pos_lst[i])
-                idle_register_lst.append(added_ancilla)
-
-        for ancilla in idle_register_lst:
-            ancilla.status = "busy"
-        return idle_register_lst
+# Drawing ends here
 
 AbstractCircuit.teleported_Toffoli = teleported_Toffoli
 AbstractCircuit.AND = AND
