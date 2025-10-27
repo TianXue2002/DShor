@@ -1,5 +1,6 @@
 import numpy as np
-from typing import Tuple, List
+from typing import Tuple, List, Dict
+import copy
 
 class QuantumGate():
     def __init__(self,
@@ -7,11 +8,21 @@ class QuantumGate():
                  position: int,):
         # All quantum gates supported by the current circuit
         gate_lst = ["X", "Y", "Z", "H", "S", "Sdg", "MX", "MY", "MZ", "CNOT", "CZ", 
-                    "T", "Tdg", "Toffoli", "Clear"]
+                    "T", "Tdg", "Toffoli", "Clear", "Logical"]
         if type not in gate_lst:
             raise ValueError("Unsupported gate type")
         self.type = type
         self.position = position
+    
+    def copy(self):
+        cls = self.__class__
+        new_obj = cls.__new__(cls)
+        for k, v in self.__dict__.items():
+            if isinstance(v, (list, dict, set)):
+                setattr(new_obj, k, v.copy())     # shallow copy containers
+            else:
+                setattr(new_obj, k, v)            # immutables: copy reference
+        return new_obj
 
 class TwoQubitGate(QuantumGate):
     def __init__(self, 
@@ -63,3 +74,44 @@ class CCGate:
         self.basis = basis
         self.targets = targets
         self.repeat = repeat
+
+class LogicalGate(QuantumGate):
+    def __init__(self,
+                qi: "AbstractRegister",
+                qj: "AbstractRegister",
+                a: "AncillaRegister",
+                truth_table: List[bool],
+                type: str):
+        if type not in ["AND", "UNAND"]:
+            raise ValueError("Invalid Logical Gate")
+        super().__init__("Logical", qi.pos)
+        self.qi = qi
+        self.qj = qj
+        self.a = a
+        self.truth_table = truth_table
+        self.type = type
+
+class LookupGate(QuantumGate):
+    def __init__(self,
+                target:List[bool],
+                control_qubit:List["AbstractRegister"],
+                target_qubits: List["AbstractRegister"],
+                QPU_assignment = None,
+                antena_assignment = None,
+                antena_ancilla = None):
+        super().__init__("Logical", control_qubit.pos)
+        self.target = target
+        self.control = control_qubit
+        self.target_qubits = target_qubits
+        self.QPU_assignment = QPU_assignment
+        self.antena_assignment = antena_assignment
+        self.antena_ancilla = antena_ancilla
+
+class GHZprep(QuantumGate):
+    def __init__(self, 
+                antena_ancilla: List["AbstractRegister"],
+                antena_assignment: List["AbstractRegister"]):
+        type = "Logical"
+        super().__init__(type, antena_assignment[0][0].pos)
+        self.antena_ancilla = antena_ancilla
+        self.antena_assignment = antena_assignment

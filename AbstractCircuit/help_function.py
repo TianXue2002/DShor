@@ -1,3 +1,5 @@
+from typing import List
+
 def num2controls(value:int,
                      L: int):
         """
@@ -26,3 +28,27 @@ def find_greatest_diff_bit(bin1: str,
       for i in range(len(bin1)):
             if bin1[i] != bin2[i]:
                   return len(bin1) - i - 1
+            
+def get_depth(qubits):
+    depth_lst = []
+    if qubits == None or len(qubits) == 0:
+          return []
+    if isinstance(qubits, List):
+        for qubit in qubits:
+            depth_lst.append(qubit.depth)
+    elif isinstance(qubits, dict):
+         for qubit_lst in qubits.values():
+              for qubit in qubit_lst:
+                depth_lst.append(qubit.depth)
+    return depth_lst
+
+def get_gate_cost(cost):
+    if cost == None:
+        tM = 1
+        tT = 1
+        tInter = 1
+    else:
+        tM = cost.tM
+        tT = cost.tT
+        tInter = cost.tInter
+    return tM, tT, tInter

@@ -2,8 +2,6 @@ from AbstractRegister import *
 import numpy as np
 from typing import List
 from collections import defaultdict
-from AbstractCircuit import *
-
 
 class QPU():
 
@@ -16,7 +14,7 @@ class QPU():
 
     def add_register(self,
                      added_registers: List[AbstractRegister],
-                     circuit: AbstractCircuit):
+                     circuit: "AbstractCircuit"):
         """
         Append the registers to the QPU
 

@@ -1,6 +1,7 @@
 from QuantumGate import *
 from typing import Dict
 from collections import defaultdict
+from AbstractGate import raw_AND, raw_UNAND
 
 class AbstractRegister():
     def __init__(self,
@@ -40,7 +41,8 @@ class AbstractRegister():
 
     def append(self,
                depth: int,
-               gate: QuantumGate):
+               gate: QuantumGate,
+               length = 1):
         """
         Append a new gate to the circuit
         
@@ -48,8 +50,11 @@ class AbstractRegister():
             depth:      the depth position of the gate
             gate:       the gate to be appended
         """
-        self.gates[depth] = gate
-        self.depth = depth + 1
+        if length < 1:
+            raise ValueError("Cannot have length 0 gate!")
+        cur_gate = gate
+        self.gates[depth] = cur_gate
+        self.depth = depth + length
 
     def add_single_qubit_gate(self,
                               type: str):
@@ -222,7 +227,9 @@ class AbstractRegister():
         self.append(Toffoli_depth, cur_gate)
         c2.append(Toffoli_depth, cur_gate)
         target.append(Toffoli_depth, cur_gate)
-
+        
+AbstractRegister.raw_AND = raw_AND
+AbstractRegister.raw_UNAND = raw_UNAND
 
 
 class DataRegister(AbstractRegister):

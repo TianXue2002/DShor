@@ -1,11 +1,13 @@
 import numpy as np
-from QuantumGate import QuantumGate, TwoQubitGate, ToffoliGate, CCGate
+from QuantumGate import *
 from typing import Dict, List
 import matplotlib.pyplot as plt
 from random import random
 from help_function import *
+from modular_operation import modular_lookup
 
-from AbstractRegister import DataRegister, AncillaRegister, AbstractRegister
+
+from AbstractRegister import *
 
 """
 Check the compilation circuit picture to understand these gates. The measurement based gates only has
@@ -81,64 +83,75 @@ def teleported_Toffoli(self,
 def AND(self,
         qi:AbstractRegister,
         qj: AbstractRegister,
-        truth_table = [False, False]):
+        truth_table = [False, False],
+        decompose = False,
+        gate_cost = None):
     
-    data = self.data
-    idle_register_lst = self.allocate_ancillas(1, pos_lst=[qj.pos])
-    a0 = idle_register_lst[0]
-    d0 = qi
-    d1 = qj
+    if not decompose:
+        idle_register_lst = self.allocate_ancillas(1, pos_lst=[qj.pos])
+        a0 = idle_register_lst[0]
+        qi.raw_AND(qj, a0, truth_table, gate_cost = gate_cost)
+    else:
+        data = self.data
+        idle_register_lst = self.allocate_ancillas(1, pos_lst=[qj.pos])
+        a0 = idle_register_lst[0]
+        d0 = qi
+        d1 = qj
 
 
-    if truth_table[0]:
-        qi.X()
-    if truth_table[1]:
-        qj.X()
+        if truth_table[0]:
+            qi.X()
+        if truth_table[1]:
+            qj.X()
 
-    a0.T()
-    d0.CNOT(a0)
-    a0.Tdg()
-    d1.CNOT(a0)
-    a0.T()
-    d0.CNOT(a0)
-    a0.Tdg()
-    a0.H()
-    a0.Sdg()
+        a0.T()
+        d0.CNOT(a0)
+        a0.Tdg()
+        d1.CNOT(a0)
+        a0.T()
+        d0.CNOT(a0)
+        a0.Tdg()
+        a0.H()
+        a0.Sdg()
 
-    if truth_table[0]:
-        qi.X()
-    if truth_table[1]:
-        qj.X()
+        if truth_table[0]:
+            qi.X()
+        if truth_table[1]:
+            qj.X()
 
 def unAND(self,
             qi: AbstractRegister,
             qj: AbstractRegister,
             a: AncillaRegister,
-            truth_table = [False, False]):
+            truth_table = [False, False],
+            decompose = False,
+            gate_cost = None):
     if not isinstance(a, AncillaRegister):
         raise ValueError("unAnd must be based on an ancilla qubit")
 
-    
-    threshold = 0.5
-
-    p = random()
-    if p < threshold:
-        if truth_table[0]:
-            qi.X()
-        if truth_table[1]:
-            qj.X()
-
-        g = TwoQubitGate("CZ", qi.pos, qi, qj)
-        g = CCGate(g, a, [qi, qj], "X")
-        a.appendCCgates(g)
-
-        if truth_table[0]:
-            qi.X()
-        if truth_table[1]:
-            qj.X()
+    if not decompose:
+        qi.raw_UNAND(qj, a, truth_table, gate_cost = gate_cost)
     else:
-        a.MX()
-    a.Clear()
+        threshold = 1
+
+        p = random()
+        if p < threshold:
+            if truth_table[0]:
+                qi.X()
+            if truth_table[1]:
+                qj.X()
+
+            g = TwoQubitGate("CZ", qi.pos, qi, qj)
+            g = CCGate(g, a, [qi, qj], "X")
+            a.appendCCgates(g)
+
+            if truth_table[0]:
+                qi.X()
+            if truth_table[1]:
+                qj.X()
+        else:
+            a.MX()
+        a.Clear()
     
 def multiAND(self,
                 controls: List[AbstractRegister],
@@ -163,7 +176,12 @@ def multiUnAND(self,
 def lookup(self,
             table:Dict[int, int],
             control_qubit:List[AbstractRegister],
-            target_qubits: List[AbstractRegister]):
+            target_qubits: List[AbstractRegister],
+            QPU_assignment = None,
+            antena_assignment = None,
+            antena_ancilla = None,
+            decompose = False,
+            gate_cost = None):
     
     L = len(control_qubit)
     for value in table:
@@ -171,8 +189,9 @@ def lookup(self,
             raise ValueError("The loaded number is longer than the registers")
     table = table.copy()
     table = dict(sorted(table.items()))
-    
     for i in range(len(table.keys())):
+        shift = i % 2
+        print(f"loading {i}th number")
         key = list(table.keys())[i]
         cur_value = table[key]
         targets = num2controls(cur_value, L)
@@ -191,34 +210,39 @@ def lookup(self,
                 qj = self.data[control_qubit[j].pos]
                 a = self.ancilla[control_qubit[j].pos]
                 truth_table = [True, controls[j]]
-                self.unAND(qi, qj, a)
+                self.unAND(qi, qj, a, decompose = decompose, gate_cost = gate_cost)
             if msb_diff == len(controls) - 2:
                 qc = self.data[control_qubit[msb_diff + 1].pos]
                 target_qubit = self.ancilla[control_qubit[msb_diff].pos]
-                qc.CNOT(target_qubit)                    
+                qc.CNOT(target_qubit)      
             elif msb_diff < len(controls) - 2:
                 qc = self.ancilla[control_qubit[msb_diff + 1].pos]
                 target_qubit = self.ancilla[control_qubit[msb_diff].pos]
-                qc.CNOT(target_qubit)                    
-            
-            
+                qc.CNOT(target_qubit)     
 
         for j in range(msb_diff - 1 , -1, -1):
             if j == L-2:
                 qi = control_qubit[j+1]
                 qj = control_qubit[j]
                 truth_table = [controls[j+1], controls[j]]
-                self.AND(qi, qj, truth_table=truth_table)
+                self.AND(qi, qj, truth_table=truth_table, decompose = decompose, gate_cost = gate_cost)
             else:
                 prev_qubit = control_qubit[j + 1]
                 qi = self.ancilla[prev_qubit.pos]
                 qj = control_qubit[j]
                 truth_table = [True, controls[j]]
-                self.AND(qi, qj, truth_table=truth_table)
-        for k in range(len(targets)):
-            if targets[k] == False:
-                cur_ancilla = self.ancilla[qj.pos]
-                cur_ancilla.CNOT(target_qubits[k])
+                self.AND(qi, qj, truth_table=truth_table, decompose = decompose, gate_cost = gate_cost)
+
+        if QPU_assignment == None or antena_assignment == None:
+            for k in range(len(targets)):
+                if targets[k] == False:
+                    cur_ancilla = self.ancilla[qj.pos]
+                    cur_ancilla.CNOT(target_qubits[k])
+        else:
+            qc = self.ancilla[qj.pos]
+            modular_lookup(qc, target_qubits, targets, QPU_assignment, antena_assignment, 
+                           antena_ancilla, decompose=decompose, gate_cost = gate_cost, shift = shift)               
+            
         prev_key = key
 
     for j in range(len(controls) - 1):
@@ -229,7 +253,7 @@ def lookup(self,
         qj = self.data[control_qubit[j].pos]
         a = self.ancilla[control_qubit[j].pos]
         truth_table = [True, controls[j]]
-        self.unAND(qi, qj, a)
+        self.unAND(qi, qj, a, decompose = decompose, gate_cost = gate_cost)
 
 def add(self,
         q1_lst: List[AbstractRegister],

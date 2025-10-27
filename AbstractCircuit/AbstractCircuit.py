@@ -90,18 +90,41 @@ class AbstractCircuit():
         self.length += 1
         return cur_ancilla
     
-    def add_data(self):
+    def add_data(self, type, pos = None):
         """
         Append a data qubits at the end of the circuit.
         """
-        if len(self.data.keys()) == 0:
-            cur_pos = 0
+        if pos == None:
+            if len(self.data.keys()) == 0:
+                cur_pos = 0
+            else:
+                cur_pos = max(self.data.keys()) + 1
         else:
-            cur_pos = max(self.data.keys()) + 1
+            if pos in self.data.keys():
+                raise ValueError("This position already has a data")
+            else:
+                cur_pos = pos
         cur_data = DataRegister(cur_pos, {})
+        cur_data.type = type
         self.data[cur_pos] = cur_data
         self.length += 1
         return cur_data
+    
+    def insert_data(self, type, pos):
+        """
+        Insert a data qubit register at pos and push all other qubits back by 1
+        """
+        new_data = {}
+        for data_pos, register in self.data.items():
+            if data_pos >= pos:
+                new_data[data_pos + 1] = register
+                register.pos += 1
+            else:
+                new_data[data_pos] = register
+        cur_data = DataRegister(pos, {})
+        cur_data.type = type
+        new_data[pos] = cur_data
+        self.data = new_data
     
     def allocate_ancillas(self,
                           num: int,
@@ -155,6 +178,19 @@ class AbstractCircuit():
             for key, value in cur_count.items():
                 count[key] += value
         return count
+
+    def depth(self):
+        max_depth = 0
+
+        for qubit in self.data.values():
+            if qubit.depth > max_depth:
+                max_depth = qubit.depth
+        
+        for qubit in self.ancilla.values():
+            if qubit.depth > max_depth:
+                max_depth = qubit.depth
+        
+        return max_depth
 
     # Drawing function. They can be ignored
     def drawTwoQubitGate(self,
@@ -210,7 +246,7 @@ class AbstractCircuit():
                     reg: AbstractRegister,
                     gate: QuantumGate,
                     x: int,
-                    ax):
+                    ax,):
         y = 2*reg.pos + (reg.get_type() == "ancilla")
         qc1 = gate.c1
         qc2 = gate.c2
@@ -235,21 +271,24 @@ class AbstractCircuit():
                     gate: QuantumGate,
                     x: int,
                     ax,
-                    cc = False):
+                    cc = False,
+                    if_text = False):
         # Single-qubit gate
         patch_color = "lightblue"
         if cc:
             patch_color = "blue"
         y = 2*reg.pos + (reg.get_type() == "ancilla")
-        ax.add_patch(plt.Rectangle((x - 0.2, y - 0.2), 0.4, 0.4,
+        ax.add_patch(plt.Rectangle((x, y - 0.2), 0.4, 0.4,
                                 fill=True, color=patch_color, edgecolor='black'))
-        ax.text(x, y, gate.type, ha='center', va='center', fontsize=8)
+        if if_text:
+            ax.text(x+0.2, y, gate.type, ha='center', va='center', fontsize=8)
     
     def drawCCGate(self,
                     reg: AbstractRegister,
                     gate: CCGate,
                     x: int,
-                    ax,):
+                    ax,
+                    if_text = False):
         y = 2*reg.pos + (reg.get_type() == "ancilla")
         cc = gate.cc
         cur_gate = gate.gate
@@ -268,7 +307,7 @@ class AbstractCircuit():
                 Mgate = QuantumGate("MX", cc.pos)
             if basis == "Z":
                 Mgate = QuantumGate("MZ", cc.pos)
-            self.drawSingleGate(reg, Mgate, x, ax, cc=True)
+            self.drawSingleGate(reg, Mgate, x, ax, cc=True, if_text = if_text)
         offset = 0.03  # horizontal spacing between the two lines
         
         if isinstance(cur_gate, TwoQubitGate):
@@ -287,24 +326,90 @@ class AbstractCircuit():
             if not gate.repeat:
                 ax.plot([x - offset, x - offset], [y+0.2, y_target-0.2], linestyle='-', color='black', linewidth=1)
                 ax.plot([x + offset, x + offset], [y+0.2, y_target-0.2], linestyle='-', color='black', linewidth=1)
-            self.drawSingleGate(gate.targets[0], cur_gate, x, ax, cc=True)
+            self.drawSingleGate(gate.targets[0], cur_gate, x, ax, cc=True, if_text = if_text)
+
+    def drawLogicalGate(self,
+                        reg: AbstractRegister,
+                        gate: QuantumGate,
+                        x: int,
+                        ax,
+                        if_text = False):
+        patch_color = "lightblue"
+        if reg != gate.qi:
+            return
+        qi = gate.qi
+        qj = gate.qj
+        a = gate.a
+        yi = 2*qi.pos + (qi.get_type()=="ancilla")
+        yj = 2*qj.pos + (qj.get_type()=="ancilla")
+        ya = 2*a.pos + (a.get_type()=="ancilla")
+        y0 = min([yi, yj, ya])
+        y1 = max([yi, yj, ya])
+        depth = gate.depth
+        ax.add_patch(plt.Rectangle((depth, y0 - 0.2), gate.length - 1.4, 0.4+y1-y0,
+                                fill=True, color=patch_color, edgecolor='black'))
+        if if_text:
+            ax.text(depth+(gate.length-1.4)/2, (y0 + y1)/2, gate.type, ha='center', va='center', fontsize=15)
+
+    def drawGHZprep(self,
+                reg: AbstractRegister,
+                gate: QuantumGate,
+                x: int,
+                ax,
+                if_text = False):
         
-    def draw_circuit(self):
+        antena_ancilla = gate.antena_ancilla
+        antena_assignment = gate.antena_assignment
+        depth = gate.depth
+        length = gate.length
+        pos_lst = []
+        for qubit_lst in antena_ancilla.values():
+            for qubit in qubit_lst:
+                cur_pos = 2*qubit.pos + (qubit.get_type()=="ancilla")
+                pos_lst.append(cur_pos)
+        
+        for qubit_lst in antena_assignment.values():
+            for qubit in qubit_lst:
+                cur_pos = 2*qubit.pos + (qubit.get_type()=="ancilla")
+                pos_lst.append(cur_pos)
+        
+        y0 = min(pos_lst)
+        y1 = max(pos_lst)
+        x0 = depth
+        x1 = depth + length
+
+        patch_color = "red"
+        ax.add_patch(plt.Rectangle((x0 - 0.2, y0 - 0.2), length, 0.4+y1-y0,
+                                fill=True, color="red", edgecolor='black'))
+        if if_text:
+            ax.text((x0-0.2+length/2), (y0 + y1)/2, "GHZ Prep", ha='center', va='center', fontsize=15)
+
+    def draw_circuit(self, if_text = False, if_line = False):
 
         all_registers = list(self.data.values()) + list(self.ancilla.values())
         num_qubits = 2*len(self.data) + 1
         max_depth = max([register.depth for register in all_registers], default=0)
         
-        fig, ax = plt.subplots(figsize=(max([6, max_depth]), max([3, num_qubits])))
-
-        # Draw horizontal lines for each qubit
-        for pos, data_register in self.data.items():
-            ax.hlines(y=2*pos, xmin=0, xmax=max_depth+1, color='black', linewidth=0.5)
-            ax.text(-0.5, 2*pos, f'q{pos}', fontsize=12, ha='right', va='center')
-        
-        for pos, ancilla_register in self.ancilla.items():
-            ax.hlines(y=2*pos+1, xmin=0, xmax=max_depth+1, color='red', linewidth=0.5)
-            ax.text(-0.5, 2*pos+1, f'a{pos}', fontsize=12, ha='right', va='center')
+        fig, ax = plt.subplots(figsize=(min([300, max_depth]), min([100, num_qubits])))
+        plt.rcParams["figure.dpi"] = 150   # default is usually 100+ or 150
+        name_count = defaultdict(int)
+        # c_count = 0
+        # t_count = 0
+        # w_count = 0
+        # antena_count = 0
+        if if_line:
+            # Draw horizontal lines for each qubit
+            for pos, data_register in self.data.items():
+                ax.hlines(y=2*pos, xmin=0, xmax=max_depth+1, color='black', linewidth=0.5)
+                name = data_register.type
+                cur_count = name_count[name]
+                name_count[name] += 1
+                
+                ax.text(-0.5, 2*pos, name+f'{cur_count}', fontsize=12, ha='right', va='center')
+            
+            for pos, ancilla_register in self.ancilla.items():
+                ax.hlines(y=2*pos+1, xmin=0, xmax=max_depth+1, color='red', linewidth=0.5)
+                ax.text(-0.5, 2*pos+1, f'a{pos}', fontsize=12, ha='right', va='center')
 
         # Draw gates
         for reg in all_registers:
@@ -319,9 +424,13 @@ class AbstractCircuit():
                 elif isinstance(gate, ToffoliGate):
                     self.drawToffoli(reg, gate, x, ax)
                 elif isinstance(gate, CCGate):
-                    self.drawCCGate(reg, gate, x, ax)
+                    self.drawCCGate(reg, gate, x, ax, if_text = if_text)
+                elif isinstance(gate, LogicalGate):
+                    self.drawLogicalGate(reg, gate, x, ax, if_text = if_text)
+                elif isinstance(gate, GHZprep):
+                    self.drawGHZprep(reg, gate, x, ax, if_text = if_text)
                 else:
-                    self.drawSingleGate(reg, gate, x, ax)
+                    self.drawSingleGate(reg, gate, x, ax, if_text = if_text)
                     
         ax.set_ylim(-1, num_qubits)
         ax.set_xlim(0, max_depth + 1)
